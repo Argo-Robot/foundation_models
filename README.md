@@ -13,70 +13,90 @@ Whether you're an AI researcher, a roboticist, or simply curious about the futur
 ## 1) Action Chunk Transformer (ACT)
 
 <div>
-    <img src="./images/act.png" alt="Global Trajectory">
+    <img src="./images/act.PNG" alt="Global Trajectory">
 </div><br>
 
-ACT leverages **transformer-based action chunking** and **end-to-end imitation learning** to enable low-cost robotic arms to perform complex tasks with high success rates. Developed as part of the ALOHA project, ACT learns from real-world demonstrations collected via a **custom teleoperation setup**. The model generates action sequences in a **chunked** manner, improving stability and reducing compounding errors over time. With only **10 minutes of demonstrations**, ACT enables robots to achieve **80-90% success rates** on fine manipulation tasks.
+ACT leverages **transformer-based action chunking** and end-to-end imitation learning to enable low-cost robotic arms to perform complex tasks with high success rates. Developed as part of the ALOHA project, ACT learns from real-world demonstrations collected via a custom teleoperation setup. The model generates action sequences in a chunked manner, improving stability and reducing compounding errors over time. With only 10 minutes of demonstrations, ACT enables robots to achieve 80-90% success rates on fine manipulation tasks.
 
 ## Dataset  
 
-ACT uses a dataset collected from real-world **bimanual teleoperation** experiments. The dataset consists of **human demonstrations**, meaning they gather their own data rather than relying on pre-existing datasets. The demonstration dataset consists of trajectories of **image observations, joint positions, and executed actions**.  
+ACT uses a dataset collected from real-world bimanual teleoperation experiments. The dataset consists of **human demonstrations**, meaning they gather their own data rather than relying on pre-existing datasets. The demonstration dataset consists of trajectories of **image observations, joint positions and executed actions**.  
 
 ## Input & Output  
-#### Input  
-- **4 RGB images** (480×640 resolution) processed through **ResNet18**  
-- **Joint positions** for the **two robot arms** (7+7=14 DOF)  
+
+### Input  
+- **4 RGB images** (480×640 resolution) processed through ResNet18  
+- **Joint positions** for the two robot arms (7+7=14 DOF)  
 
 ### Output  
 
 - **Absolute joint positions** in chunks (e.g., next 100 timesteps)
 
-## Architecture
+## Model Architecture  
 
 <div>
-    <img src="./images/act1.png" alt="Global Trajectory">
+    <img src="./images/act1.PNG" alt="Global Trajectory">
 </div><br>
 
 <div>
-    <img src="./images/act2.png" alt="Global Trajectory">
+    <img src="./images/act2.PNG" alt="Global Trajectory">
+</div>
+
+### Training Phase
+
+#### Step 1: Sample Data  
+From the demonstration dataset, we sample:  
+- A sequence of **RGB images** from four 480×640 webcams  
+- **Joint positions** of two 7-DOF robot arms (14-dimensional vector)  
+- A target **action sequence** over the next $k$ time steps  
+
+#### Step 2: Infer Latent Style Variable $z$  
+The encoder is a **BERT-style transformer encoder** that receives:  
+- A learned **[CLS]** token  
+- The **current joint positions**, projected to the embedding dimension  
+- The **target action sequence**, also linearly embedded  
+
+These inputs form a $(k + 2) \times d_\text{embed}$ sequence. After passing through the transformer encoder, the **[CLS] token output** is used to predict the **mean and variance** of the latent style variable $z$, modeled as a diagonal Gaussian. Using the **reparameterization trick**, a sample of $z$ is drawn, enabling gradient backpropagation.
+
+#### Step 3: Decode Predicted Action Sequence  
+The decoder — the actual **policy** — takes as input:
+- **Image features**: Each image is processed with a **ResNet18** to get a 15×20×512 feature map, flattened into a sequence of 300×512. For 4 cameras, this gives a total of 1200×512.
+- **2D sinusoidal position embeddings** are added to preserve spatial structure.
+- **Joint positions** and **$z$**, both projected to the same embedding dimension.
+
+These inputs are concatenated into a **1202×512** sequence and passed through a **transformer encoder**. A **transformer decoder** uses **cross-attention** to generate a sequence of **$k \times 14$** outputs, representing joint positions for each time step.
+
+---
+
+### Inference Phase
+
+At test time, the model uses only the **CVAE Decoder** as the policy. The encoder is discarded.
+
+- The robot receives a new observation: **RGB images + joint positions**  
+- These are processed exactly as during training (ResNet18 → flattened features → transformer encoder)  
+- The **style variable $z$** is fixed to a **zero vector** (i.e., mean of the prior distribution)  
+- The transformer decoder outputs a deterministic **$k \times 14$** tensor, corresponding to the next $k$ joint positions
+
+This deterministic decoding provides **stable, repeatable behavior**, which is especially valuable for evaluation and deployment.
+
+---
+
+## 2) Octo: An Open-Source Generalist Robot Policy
+
+<div>
+    <img src="./images/octo.PNG" alt="Global Trajectory">
 </div><br>
 
-## 2) Octo & RT2 & OpenX Embodiment
+Octo is a large, transformer-based policy pretrained on 800k demonstrations from the Open X-Embodiment dataset. Designed for flexibility, it supports multiple robots, sensor setups, and task types — including language commands and goal images. Octo can be finetuned quickly on new environments and is fully open-source, making it a powerful foundation for scalable, general-purpose robotic learning.
 
 ## Dataset  
-- **Octo** is trained on **800k robot trajectories** from the **Open X-Embodiment dataset**.  
-- This dataset aggregates **robotic demonstrations from 9 different robotic platforms**, covering a wide range of tasks:  
-  - **Pick-and-place**  
-  - **Tool use**  
-  - **Button pressing**  
-  - **Drawer opening/closing**  
-- The dataset contains **heterogeneous data**, including:  
-  - **Different camera views** (wrist cameras, third-person).  
-  - **Robots with varying DoFs**.  
-  - **Task-conditioning signals** (language commands & goal images).  
 
----
-
-## Training Procedure  
-### **Model Architecture**  
-- **Transformer-based policy**, operating on **tokenized representations** of state, action, and task information.  
-- **Pretraining on Open X-Embodiment dataset** for generalization across multiple robotic platforms.  
-- **Finetuning on specific robots** with only a **few thousand demonstrations** for adaptation.  
-- **Number of Parameters** ????
-
-### **Training Strategy**  
-- **Pretraining:**  
-  - Trained on **800k demonstrations** across **9 robot setups**.  
-  - Uses **sequence modeling** to predict the next action given past states.  
-  - **Masked modeling objective**: Predict missing actions given observations.  
-- **Finetuning:**  
-  - Enables **zero-shot generalization** and **better adaptation with finetuning**.  
-
----
+Octo is trained on a massive dataset of **800,000 robot trajectories** collected from the Open X-Embodiment dataset - the largest and most diverse robot manipulation dataset to date. This dataset brings together demonstrations from nine different robotic platforms, spanning a wide variety of manipulation tasks such as pick-and-place, tool use, button pressing and drawer opening or closing. The data is highly heterogeneous, featuring a mix of camera perspectives (e.g., wrist-mounted and third-person views), robots with different degrees of freedom, and task-conditioning signals in the form of either language instructions or goal images.
 
 ## Input & Output  
+
 ### **Input:**  
-- **Observations**:  
+
   - **RGB images** from multiple viewpoints (wrist cam, third-person).  
   - **Proprioceptive states** (joint positions, velocities).  
   - **Task conditioning**:  
@@ -84,32 +104,7 @@ ACT uses a dataset collected from real-world **bimanual teleoperation** experime
     - **Goal images** (e.g., "Make the scene look like this").  
 
 ### **Output:**  
-- **Delta position actions**, predicting relative movement rather than absolute positions.  
-- **Continuous control commands**, refining robotic motion dynamically.  
-- **Diffusion Models** for **action generation**, improving smoothness and adaptability.  
-- **Action Chunking**
-
----
-
-## Metrics & Evaluation  
-### **Metrics Used:**  
-- **Success Rate ($S$)**: Measures the percentage of completed tasks.  
-- **Task Completion Time ($T$)**: Evaluates efficiency in execution.  
-- **Generalization Score ($G$)**: Measures adaptability to unseen tasks.  
-
-### **Evaluation Experiments:**  
-- Tested on **9 robotic platforms** across different institutions.  
-- Evaluated on **zero-shot performance** and **finetuning efficiency**.  
-- Experiments conducted in **both real-world and simulation settings**.  
-
-### **Baselines Compared Against:**  
-- **RT-1** (Google DeepMind’s robotics transformer policy).  
-- **Gato** (DeepMind’s multi-modal policy for vision, text, and robotics).  
-- **BC (Behavior Cloning)**, a standard supervised learning approach for action prediction.  
-- **LMP (Latent Motor Policies)**, a method utilizing latent representations.  
-
----
-
+- **Delta Cartesian position actions** in chunks.  
 
 ## 3) Open VLA Meta
 
@@ -242,11 +237,11 @@ Backbone: llama2, siglip, dino
 
 ## Key Works and Citations
 
-- **Tony Z. Zhao, Vikash Kumar, Sergey Levine, Chelsea Finn**: [*Learning Fine-Grained Bimanual Manipulation with Low-Cost Hardware*](https://arxiv.org/pdf/2304.13705)
-- **Dibya Ghosh, Homer Walke, Karl Pertsch**: [*Octo: An Open-Source Generalist Robot Policy*](https://arxiv.org/pdf/2405.12213)
-- **Anthony Brohan, Noah Brown, Justice Carbajal**: [*RT-2: Vision-Language-Action Models Transfer Web Knowledge to Robotic Control*](https://arxiv.org/pdf/2307.15818)
-- **Moo Jin Kim, Karl Pertsch, Siddharth Karamcheti**: [*OpenVLA: An Open-Source Vision-Language-Action Model*](https://arxiv.org/pdf/2406.09246)
-- **Kevin Black, Noah Brown, Danny Driess**: [*π0: A Vision-Language-Action Flow Model for General Robot Control*](https://arxiv.org/pdf/2410.24164)
+- **T. Zhao, V. Kumar, S. Levine, C. Finn**: [*Learning Fine-Grained Bimanual Manipulation with Low-Cost Hardware*](https://arxiv.org/pdf/2304.13705)
+- **D. Ghosh, H. Walke, K. Pertsch**: [*Octo: An Open-Source Generalist Robot Policy*](https://arxiv.org/pdf/2405.12213)
+- **A. Brohan, N. Brown, J. Carbajal**: [*RT-2: Vision-Language-Action Models Transfer Web Knowledge to Robotic Control*](https://arxiv.org/pdf/2307.15818)
+- **M. Kim, K. Pertsch, S. Karamcheti**: [*OpenVLA: An Open-Source Vision-Language-Action Model*](https://arxiv.org/pdf/2406.09246)
+- **K. Black, N. Brown, D. Driess**: [*π0: A Vision-Language-Action Flow Model for General Robot Control*](https://arxiv.org/pdf/2410.24164)
 - **Figure AI**: [*Helix: A Vision-Language-Action Model for Generalist Humanoid Control*](https://www.figure.ai/news/helix)
-- **Cheng Chi, Zhenjia Xu, Siyuan Feng, Eric Cousineau**: [*Diffusion Policy: Visuomotor Policy Learning via Action Diffusion*](https://arxiv.org/pdf/2303.04137)
-- **Karl Pertsch, Kyle Stachowicz, Brian Ichter**: [*FAST: Efficient Action Tokenization for Vision-Language-Action Models*](https://arxiv.org/pdf/2501.09747)
+- **C. Chi, Z. Xu, S. Feng, E. Cousineau**: [*Diffusion Policy: Visuomotor Policy Learning via Action Diffusion*](https://arxiv.org/pdf/2303.04137)
+- **K. Pertsch, K. Stachowicz, B. Ichter**: [*FAST: Efficient Action Tokenization for Vision-Language-Action Models*](https://arxiv.org/pdf/2501.09747)
