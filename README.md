@@ -2,11 +2,11 @@
 
 <div>
     <img src="./images/foundation_models.png" alt="Global Trajectory">
-</div><br>
+</div>
 
 Robotics is undergoing a revolution as foundation models (large AI models trained on diverse datasets) are enabling robots to perform complex manipulation tasks with unprecedented generalization. Unlike traditional approaches that require task-specific programming, these models leverage transformers and imitation learning to allow robots to adapt flexibly to new tasks and environments. This shift is driving advances in critical applications, from industrial automation and precision manufacturing to home robot assistants.  
 
-In this blog post, we’ll explore state-of-the-art methods like ACT, Helix from Figure AI, OpenVLA, Octo, RT-2 from Google, and Diffusion Policies from Toyota Research Institute. We'll break down each method into its core components: the datasets they use, how they process inputs and outputs, their model architectures, training procedures (including loss functions and fine-tuning strategies), and the metrics and benchmarks used to evaluate performance.  
+In this blog post, we’ll explore state-of-the-art methods like ACT, Octo, Helix from Figure AI, OpenVLA and Diffusion Policies from Toyota Research Institute. We'll break down each method into its core components: the datasets they use, the inputs and outputs they use and their model architectures.
 
 Whether you're an AI researcher, a roboticist, or simply curious about the future of autonomous robots, this guide will provide a clear and structured overview of how modern foundation models are shaping the next generation of robotic manipulation!
 
@@ -155,9 +155,9 @@ One of the most crucial components in any robot policy is how actions are repres
 
 The most straightforward method is to **directly regress the next action** (e.g., joint positions or torques) using **Mean Squared Error (MSE)**:
 
-$$
+```math
 \mathcal{L}_{\text{MSE}} = \frac{1}{T} \sum_{t=1}^{T} \left\| a_t^{\text{pred}} - a_t^{\text{true}} \right\|^2
-$$
+```
 
 This method assumes a **unimodal distribution**, producing the "average" best action. It works well when demonstrations are consistent, but struggles in multimodal settings, where multiple distinct strategies exist (e.g., grasping an object from different angles).
 
@@ -172,9 +172,9 @@ Instead of predicting continuous values, one can **discretize** each action dime
 
 Training is done using **cross-entropy loss**:
 
-$$
+```math
 \mathcal{L}_{\text{disc}} = - \sum_{i=1}^{D} \log p_i(a_i)
-$$
+```
 
 This approach enables **multi-modal prediction** by selecting among multiple possible bins. However, it introduces quantization errors and can lead to coarse, jittery behavior in fine-grained tasks.
 
@@ -194,9 +194,9 @@ $$
 
 The model is trained to **predict the noise** that was added:
 
-$$
+```math
 \mathcal{L}_{\text{diff}} = \mathbb{E}_{a_0, \epsilon, k} \left[ \left\| \epsilon - \epsilon_\theta(x_k, e, k) \right\|^2 \right]
-$$
+```
 
 Where:
 - $x_k$ is the noisy action chunk at timestep $k$
