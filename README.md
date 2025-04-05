@@ -1,4 +1,4 @@
-# Foundation Models for Manipulation: Step-by-Step Guide  
+# Foundation Models for Manipulation: Overview
 
 <div>
     <img src="./images/foundation_models.png" alt="Global Trajectory">
@@ -51,7 +51,7 @@ From the demonstration dataset, we sample:
 - A target **action sequence** over the next $k$ time steps  
 
 #### Step 2: Infer Latent Style Variable $z$  
-The encoder is a **BERT-style transformer encoder** that receives:  
+The encoder is a BERT-style transformer encoder that receives:  
 - A learned **[CLS]** token  
 - The **current joint positions**, projected to the embedding dimension  
 - The **target action sequence**, also linearly embedded  
@@ -64,7 +64,7 @@ The decoder — the actual **policy** — takes as input:
 - **2D sinusoidal position embeddings** are added to preserve spatial structure.
 - **Joint positions** and **$z$**, both projected to the same embedding dimension.
 
-These inputs are concatenated into a **1202×512** sequence and passed through a **transformer encoder**. A **transformer decoder** uses **cross-attention** to generate a sequence of **$k \times 14$** outputs, representing joint positions for each time step.
+These inputs are concatenated into a 1202×512 sequence and passed through a transformer encoder. A transformer decoder uses cross-attention to generate a sequence of **$k \times 14$** outputs, representing joint positions for each time step.
 
 ---
 
@@ -77,9 +77,11 @@ At test time, the model uses only the **CVAE Decoder** as the policy. The encode
 - The **style variable $z$** is fixed to a **zero vector** (i.e., mean of the prior distribution)  
 - The transformer decoder outputs a deterministic **$k \times 14$** tensor, corresponding to the next $k$ joint positions
 
-This deterministic decoding provides **stable, repeatable behavior**, which is especially valuable for evaluation and deployment.
+This deterministic decoding provides stable, repeatable behavior, which is especially valuable for evaluation and deployment.
 
----
+## Innovative Contributions
+
+A central innovation of ACT is its use of **action chunking** — predicting sequences of joint positions over a fixed horizon (e.g., the next *k* steps) instead of single-step actions. This chunked prediction strategy reduces the task's effective time horizon and significantly mitigates compounding errors during execution.
 
 ## 2) Octo: An Open-Source Generalist Robot Policy
 
@@ -106,142 +108,170 @@ Octo is trained on a massive dataset of **800,000 robot trajectories** collected
 ### **Output:**  
 - **Delta Cartesian position actions** in chunks.  
 
+
+## Model Architecture  
+
+**Octo** architecture consists of three main components:
+
+1. **Input tokenizers** for processing observations and task specifications  
+2. A **transformer backbone** that encodes the unified input sequence  
+3. **Readout heads** that decode the embeddings into actionable commands
+
+### Input Tokenization
+
+Octo supports multiple input modalities including language commands, goal images, and diverse robot observations. Each of these is converted into a unified token representation using modality-specific encoders:
+
+- **Language commands** are tokenized and encoded using a pretrained **T5-base** transformer model, producing a sequence of language embeddings.  
+- **Goal images** and **RGB observations** (from wrist or third-person cameras) are passed through a shallow CNN, then divided into flattened patch sequences. 
+
+After encoding, each token is assigned a **learned positional embedding**. These are concatenated into a single token sequence that includes both **task tokens** (e.g., language or goal images) and **observation tokens**, forming the complete input to the transformer.
+
+### Transformer Backbone
+
+The token sequence is processed by a **transformer model** with a block-wise attention mechanism. Observation tokens are allowed to attend causally - meaning only to past or current tokens - while also attending to task tokens. This structure ensures proper temporal consistency in policy outputs. 
+
+Importantly, modality-specific blocks can be masked, enabling Octo to seamlessly handle datasets with missing modalities (e.g., no language input) and making it highly modular for downstream finetuning.
+
+### Readout Heads & Action Prediction
+
+To generate actions, **readout tokens** are inserted into the input sequence. These tokens attend to task and observation tokens but are **not attended to in return**. They act as passive readers, similar to the [CLS] token in BERT, summarizing the encoded information.
+
+The output embeddings of the readout tokens are passed through a lightweight **action head** based on **diffusion models**, which predicts a **chunk of future actions**. This formulation allows Octo to model complex, multimodal action distributions and supports chunked action execution similar to ACT.
+
+## Innovative contributions
+
+One of Octo’s key design advantages is its **modular and adaptable architecture**. During finetuning, new sensors, tasks, or robot morphologies can be integrated by simply attaching new lightweight encoders, positional embeddings, or output heads — all **without modifying the pretrained transformer weights**. This stands in contrast to prior architectures that often require reinitialization or full retraining when adapting to new settings.
+
 ## 3) Open VLA Meta
 
 ## 4) VLAM Helix Figure
 
-## 5) Diffusion Vs Bins Vs FAST ????
 
-----> but tipically Diffusion is used with transformers or can be used alone? ASK GPT + CODE
+## 5) Action Representation
 
+One of the most crucial components in any robot policy is how actions are represented and generated. Different approaches make different trade-offs in terms of generalization, expressivity, and training stability. This chapter outlines and compares three prominent action representation strategies: **MSE regression**, **discretization**, and **diffusion-based generation**.
 
+### 1. Continuous Regression with MSE Loss
 
-A standard Denoising Diffusion Probabilistic Model (DDPM) works by starting from a noisy version of the data and iteratively “denoising” it. For a conditional version, we modify the denoising step so that the noise prediction is conditioned on the observation.
-
-The modified denoising update equation is given by:
-
-$$
-A_{t-1} = \alpha \Bigl( A_t - \gamma\, \varepsilon_\theta\bigl(O_t, A_t, k\bigr) + \mathcal{N}(0, \sigma^2 I) \Bigr)
-$$
-
-where:
-
-- $A_t$ is the current (noisy) action sequence at iteration $k$.
-- $\varepsilon_\theta\bigl(O_t, A_t, k\bigr)$ is a neural network (the noise prediction network) that estimates the noise present in $A_t$ given the observation $O_t$ and the denoising iteration $k$.
-- $\alpha$ and $\gamma$ are schedule parameters (think of them as similar to a learning rate schedule).
-- $\mathcal{N}(0, \sigma^2 I)$ is Gaussian noise added at each step.
-
-This update can be seen as a single step of gradient descent on an energy function, where $\varepsilon_\theta$ approximates the gradient:
+The most straightforward method is to **directly regress the next action** (e.g., joint positions or torques) using **Mean Squared Error (MSE)**:
 
 $$
--\nabla_{A_t}\log p\bigl(A_t \mid O_t\bigr).
+\mathcal{L}_{\text{MSE}} = \frac{1}{T} \sum_{t=1}^{T} \left\| a_t^{\text{pred}} - a_t^{\text{true}} \right\|^2
 $$
+
+This method assumes a **unimodal distribution**, producing the "average" best action. It works well when demonstrations are consistent, but struggles in multimodal settings, where multiple distinct strategies exist (e.g., grasping an object from different angles).
 
 ---
 
-## 3. Training Loss
+### 2. Discretized Action Space
 
-The training loss is defined as the Mean Squared Error (MSE) between the true noise $\varepsilon_k$ (that we add during training) and the predicted noise:
+Instead of predicting continuous values, one can **discretize** each action dimension into $K$ bins and treat action generation as a **classification task**:
+
+- Each action $a_i$ is split into $K$ bins.
+- The model outputs a probability distribution over bins.
+
+Training is done using **cross-entropy loss**:
 
 $$
-L = \text{MSE}\Bigl( \varepsilon_k,\; \varepsilon_\theta\Bigl(O_t,\; A_{0t} + \varepsilon_k,\; k\Bigr) \Bigr)
+\mathcal{L}_{\text{disc}} = - \sum_{i=1}^{D} \log p_i(a_i)
 $$
 
-### Explanation
+This approach enables **multi-modal prediction** by selecting among multiple possible bins. However, it introduces quantization errors and can lead to coarse, jittery behavior in fine-grained tasks.
 
-- $A_{0t}$ is the original (clean) action sequence.
-- We add a noise $\varepsilon_k$ (with a variance appropriate for the iteration $k$) to obtain a noisy version $A_{0t} + \varepsilon_k$.
-- The network $\varepsilon_\theta$ is then asked to predict the noise that was added.
-- Minimizing the MSE loss teaches the network to “undo” the noise, i.e., to recover the clean action sequence from the noisy one while being conditioned on the observation $O_t$.
+---
+
+### 3. Diffusion Models for Action Generation
+
+Diffusion models provide a powerful way to represent **multi-modal**, continuous action distributions, especially when predicting **chunks of actions** rather than single steps. These models consist of two phases: a **forward process** (adding noise) and a **reverse process** (iterative denoising). 
+
+#### Forward Process (Training Phase)
+
+In the forward process, we gradually add Gaussian noise to a ground-truth action chunk \( a_0 \), generating noisy versions \( x_k \) at timestep \( k \):
+
+$$
+x_k = \sqrt{\alpha_k} a_0 + \sqrt{1 - \alpha_k} \, \epsilon, \quad \epsilon \sim \mathcal{N}(0, I)
+$$
+
+The model is trained to **predict the noise** that was added:
+
+$$
+\mathcal{L}_{\text{diff}} = \mathbb{E}_{a_0, \epsilon, k} \left[ \left\| \epsilon - \epsilon_\theta(x_k, e, k) \right\|^2 \right]
+$$
+
+Where:
+- $x_k$ is the noisy action chunk at timestep $k$
+- $\epsilon_\theta$ is the denoising network (diffusion head)
+- $e$ is the context embedding from the transformer
+
+**</br>Training Pseudocode**:
 
 ```python
-# Training loop
-for epoch in range(epochs):
-    for O, A0 in dataloader:  # Loop through dataset batches
-        # Randomly choose an iteration k for each sample
-        k = torch.randint(low=1, high=K, size=(O.shape[0],), dtype=torch.float32)
+def diffusion_training_step(a0, context_embedding, noise_schedule):
 
-        # Sample noise with variance sigma
-        epsilon_k = sigma * torch.randn_like(A0)
+    k = sample_timestep()
+    eps = torch.randn_like(a0)
+    alpha_k = noise_schedule.alpha(k)
 
-        # Create noisy actions
-        A_noisy = A0 + epsilon_k
+    # Forward diffusion (noisy input)
+    x_k = torch.sqrt(alpha_k) * a0 + torch.sqrt(1 - alpha_k) * eps
 
-        # Predict noise using the network
-        epsilon_pred = net(O, A_noisy, k)
+    # Predict noise
+    eps_pred = denoise_net(x_k, context_embedding, k)
 
-        # Compute MSE loss
-        loss = loss_fn(epsilon_pred, epsilon_k)
+    # Loss: predict the added noise
+    loss = F.mse_loss(eps_pred, eps)
 
-        # Backpropagation step
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+    return loss
 ```
 
----
 
-## 4. Inference Mechanism
+#### Reverse Process (Inference Phase)
 
-At inference time, you start with a sample $A_K$ from a Gaussian distribution (i.e., pure noise) and then iteratively apply the denoising update:
+Once a diffusion model is trained, generating actions is done via a **reverse denoising process**, starting from random noise and progressively refining it into a meaningful action or action chunk.
+
+Given a noisy action sample $x_k$, the model denoises it using:
 
 $$
-A_{k-1} = \alpha \Bigl( A_k - \gamma\, \varepsilon_\theta\bigl(O_t, A_k, k\bigr) \Bigr)
+x_{k-1} = \alpha_k \left(x_k - \gamma_k \, \epsilon_\theta(x_k, e, k)\right) + \sigma_k \, \mathcal{N}(0, I)
 $$
 
-> *(Note: For inference, you might use a method like DDIM, which does not add extra noise in each step.)*
+Where:
+- $x_k$ is the noisy action chunk at step $k$
+- $\epsilon_\theta(x_k, e, k)$ is the predicted noise from the denoising network
+- $e$ is the transformer-derived context embedding
+- $\alpha_k, \gamma_k, \sigma_k$ are parameters from a cosine or linear noise schedule
+- The added Gaussian noise $\mathcal{N}(0, I)$ ensures sample diversity
 
-After $K$ iterations, you obtain $A_0$, which is the final predicted action sequence to be executed by the robot.
+This step is iteratively applied from a pure noise sample $x_T$ down to $x_0$, the final denoised action chunk.
+
+#### Inference Pseudocode (Chunk Prediction)
 
 ```python
-def generate_action(O, num_steps=K):
-    """
-    Given an observation O, generate the corresponding action using diffusion denoising.
-    """
-    # Initialize action as pure noise
-    A_k = torch.randn(1, action_dim)  # Start from Gaussian noise
-    O = O.unsqueeze(0)  # Ensure observation has batch dimension
+def generate_action_chunk(context_embedding, T=50):
+
+    # Start from pure Gaussian noise
+    x = torch.randn(batch_size, action_dim)
 
     # Iteratively denoise
-    for k in range(num_steps, 0, -1):
-        k_tensor = torch.tensor([[k]], dtype=torch.float32)  # Current diffusion step
-        epsilon_pred = net(O, A_k, k_tensor)  # Predict noise
-        A_k = alpha * (A_k - gamma * epsilon_pred)  # Update action
+    for k in reversed(range(T)):
+        eps_pred = denoise_net(x, context_embedding, k)
+        alpha_k, gamma_k, sigma_k = noise_schedule.get(k)
 
-    return A_k.squeeze(0)  # Remove batch dimension for final output
+        # Reverse denoising step
+        x = alpha_k * (x - gamma_k * eps_pred)
+        if k > 0:
+            x += sigma_k * torch.randn_like(x)
+
+    return x  # Final predicted action chunk
 ```
 
+## 6) Key Works and Citations
 
-
-
-
-
-Input: 
-- ultima image
-- Stato (variabile deve essere, uno ha 5dof, l altro vuole includere anche speeds, altro FTS, …)
-- Ultima azione
-- latent variable
-
-Input latent net: (figure style)
-- ultime K images
-- Ultime K actions
-- Ultimi K states
-- Text command
-
-Output: 
-- azioni cartesiane continue con diffusion (delta o assolute?)
-
-Backbone: llama2, siglip, dino
-
-
-
-## Key Works and Citations
-
-- **T. Zhao, V. Kumar, S. Levine, C. Finn**: [*Learning Fine-Grained Bimanual Manipulation with Low-Cost Hardware*](https://arxiv.org/pdf/2304.13705)
-- **D. Ghosh, H. Walke, K. Pertsch**: [*Octo: An Open-Source Generalist Robot Policy*](https://arxiv.org/pdf/2405.12213)
-- **A. Brohan, N. Brown, J. Carbajal**: [*RT-2: Vision-Language-Action Models Transfer Web Knowledge to Robotic Control*](https://arxiv.org/pdf/2307.15818)
-- **M. Kim, K. Pertsch, S. Karamcheti**: [*OpenVLA: An Open-Source Vision-Language-Action Model*](https://arxiv.org/pdf/2406.09246)
-- **K. Black, N. Brown, D. Driess**: [*π0: A Vision-Language-Action Flow Model for General Robot Control*](https://arxiv.org/pdf/2410.24164)
+- **T. Zhao, V. Kumar**: [*Learning Fine-Grained Bimanual Manipulation with Low-Cost Hardware*](https://arxiv.org/pdf/2304.13705)
+- **D. Ghosh, H. Walke**: [*Octo: An Open-Source Generalist Robot Policy*](https://arxiv.org/pdf/2405.12213)
+- **A. Brohan, N. Brown**: [*RT-2: Vision-Language-Action Models Transfer Web Knowledge to Robotic Control*](https://arxiv.org/pdf/2307.15818)
+- **M. Kim, K. Pertsch**: [*OpenVLA: An Open-Source Vision-Language-Action Model*](https://arxiv.org/pdf/2406.09246)
+- **K. Black, N. Brown**: [*π0: A Vision-Language-Action Flow Model for General Robot Control*](https://arxiv.org/pdf/2410.24164)
 - **Figure AI**: [*Helix: A Vision-Language-Action Model for Generalist Humanoid Control*](https://www.figure.ai/news/helix)
-- **C. Chi, Z. Xu, S. Feng, E. Cousineau**: [*Diffusion Policy: Visuomotor Policy Learning via Action Diffusion*](https://arxiv.org/pdf/2303.04137)
-- **K. Pertsch, K. Stachowicz, B. Ichter**: [*FAST: Efficient Action Tokenization for Vision-Language-Action Models*](https://arxiv.org/pdf/2501.09747)
+- **C. Chi, Z. Xu, S. Feng**: [*Diffusion Policy: Visuomotor Policy Learning via Action Diffusion*](https://arxiv.org/pdf/2303.04137)
+- **K. Pertsch, K. Stachowicz**: [*FAST: Efficient Action Tokenization for Vision-Language-Action Models*](https://arxiv.org/pdf/2501.09747)
