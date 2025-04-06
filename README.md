@@ -2,7 +2,7 @@
 
 <div>
     <img src="./images/foundation_models.png" alt="Global Trajectory">
-</div>
+</div><br>
 
 Robotics is undergoing a revolution as foundation models (large AI models trained on diverse datasets) are enabling robots to perform complex manipulation tasks with unprecedented generalization. Unlike traditional approaches that require task-specific programming, these models leverage transformers and imitation learning to allow robots to adapt flexibly to new tasks and environments. This shift is driving advances in critical applications, from industrial automation and precision manufacturing to home robot assistants.  
 
@@ -142,7 +142,47 @@ The output embeddings of the readout tokens are passed through a lightweight **a
 
 One of Octo’s key design advantages is its **modular and adaptable architecture**. During finetuning, new sensors, tasks, or robot morphologies can be integrated by simply attaching new lightweight encoders, positional embeddings, or output heads — all **without modifying the pretrained transformer weights**. This stands in contrast to prior architectures that often require reinitialization or full retraining when adapting to new settings.
 
-## 3) Open VLA Meta
+## 3) OpenVLA: An Open-Source Vision-Language-Action Model
+
+<div>
+    <img src="./images/openvla.PNG" alt="Global Trajectory">
+</div><br>
+
+## 3) OpenVLA: An Open-Source Vision-Language-Action Model
+
+**OpenVLA** is a 7B-parameter open-source model for generalist robot manipulation, trained on **970k real-world demos** from the **Open X-Embodiment** dataset. It combines a **LLaMA 2 language model** with visual features from **DINOv2** and **SigLIP**, enabling rich vision-language grounding.
+
+## Dataset
+
+OpenVLA is trained on a curated subset of 970,000 robot demonstrations from the Open X-Embodiment dataset, which contains over 2 million trajectories from 70+ robotic platforms. To ensure consistency, only demonstrations with third-person camera views and single-arm end-effector control were included. For diversity, the team followed Octo’s data mixture strategy, prioritizing datasets with a wide range of tasks and scenes, while down-weighting redundant or narrow-scope data. This balance enables strong generalization across embodiments and environments.
+
+## Input & Output  
+
+### **Input:**  
+- **Observation image(s):** One or more RGB frames from third-person cameras, processed by the visual encoder.  
+- **Language instruction:** A natural language command describing the desired task (e.g., "stack the blocks" or "put the apple in the bowl").  
+
+### **Output:**  
+- **Robot actions as discrete tokens**  
+
+## Model Architecture
+
+OpenVLA builds on a modular vision-language foundation, with three primary components:
+
+1. **Visual Encoder:**  
+   - Dual-encoder setup: features from **DINOv2** and **SigLIP** are extracted independently and concatenated.  
+   - Enables strong spatial grounding, helpful for manipulation tasks involving complex scenes.
+
+2. **Projector:**  
+   - A small 2-layer MLP that maps visual features into the language model's token embedding space.  
+   - Ensures compatibility with the Llama 2 tokenizer and architecture.
+
+3. **Language Model Backbone (Prismatic-7B):**  
+   - Based on **Llama 2 (7B)**, pretrained on large-scale Internet text.  
+   - Fine-tuned with a next-token prediction objective on mixed vision-language-action data.  
+   - Predicts tokenized robot actions in an autoregressive fashion, conditioned on the task context.
+
+This combination allows OpenVLA to act as a generalist visuomotor controller, understanding high-level language commands and grounding them into low-level action sequences.
 
 ## 4) VLAM Helix Figure
 
