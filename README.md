@@ -4,7 +4,7 @@
     <img src="./images/foundation_models.png" alt="Global Trajectory">
 </div><br>
 
-The world of robotics is evolving rapidly with the advent of **foundation models**: large  AI systems that enable robots to perform complex manipulation tasks with unprecedented flexibility. These models, which leverage techniques like **transformers** and **imitation learning**, allow robots to learn across diverse environments and tasks without task-specific programming. This shift is driving advances in critical applications, from industrial automation to home robot assistants.  
+The world of robotics is evolving rapidly with the advent of **foundation models**: large  AI systems that enable robots to perform complex manipulation tasks with unprecedented flexibility. These models, which leverage techniques like **transformers** and **imitation learning**, allow robots to learn across diverse environments and tasks without task-specific programming.
 
 In this blog post, we’ll break down key foundation models for robotic manipulation, including:
 
@@ -29,7 +29,7 @@ ACT uses a dataset collected from real-world bimanual teleoperation experiments.
 ## Input & Output  
 
 ### Input  
-- **4 RGB images** (480×640 resolution) processed through ResNet18  
+- **4 RGB images**
 - **Joint positions** for the two robot arms (7+7=14 DOF)  
 
 ### Output  
@@ -50,7 +50,7 @@ ACT uses a dataset collected from real-world bimanual teleoperation experiments.
 
 #### Step 1: Sample Data  
 From the demonstration dataset, we sample:  
-- A sequence of **RGB images** from four 480×640 webcams  
+- A sequence of **RGB images** 
 - **Joint positions** of two 7-DOF robot arms (14-dimensional vector)  
 - A target **action sequence** over the next $k$ time steps  
 
@@ -85,7 +85,7 @@ This deterministic decoding provides stable, repeatable behavior, which is espec
 
 ## Innovative Contributions
 
-A central innovation of ACT is its use of **action chunking** — predicting sequences of joint positions over a fixed horizon (e.g., the next *k* steps) instead of single-step actions. This chunked prediction strategy reduces the task's effective time horizon and significantly mitigates compounding errors during execution.
+A central innovation of ACT is its use of **action chunking** - predicting sequences of joint positions over a fixed horizon (e.g., the next *k* steps) instead of single-step actions. This chunked prediction strategy reduces the task's effective time horizon and significantly mitigates compounding errors during execution.
 
 ## 2) Octo: An Open-Source Generalist Robot Policy
 
@@ -93,7 +93,7 @@ A central innovation of ACT is its use of **action chunking** — predicting seq
     <img src="./images/octo.PNG" alt="Global Trajectory">
 </div><br>
 
-Octo is a large, transformer-based policy pretrained on 800k demonstrations from the Open X-Embodiment dataset. Designed for flexibility, it supports multiple robots, sensor setups, and task types — including language commands and goal images. Octo can be finetuned quickly on new environments and is fully open-source, making it a powerful foundation for scalable, general-purpose robotic learning.
+Octo is a large, transformer-based policy pretrained on 800k demonstrations from the Open X-Embodiment dataset. Designed for flexibility, it supports multiple robots, sensor setups, and task types - including language commands and goal images. Octo can be finetuned quickly on new environments and is fully open-source, making it a powerful foundation for scalable, general-purpose robotic learning.
 
 ## Dataset  
 
@@ -167,7 +167,7 @@ OpenVLA is trained on a curated subset of 970,000 robot demonstrations from the 
 - **Language instruction:** A natural language command describing the desired task (e.g., "stack the blocks" or "put the apple in the bowl").  
 
 ### **Output:**  
-- **Delta position Cartesian actions as discrete tokens**  
+- **Delta position Cartesian actions** as discrete tokens  
 
 ## Model Architecture
 
@@ -209,15 +209,15 @@ Helix is trained on a high-quality, diverse dataset consisting of approximately 
 ## Input & Output
 
 ### **Input:**  
-- Monocular RGB image from the robot’s onboard camera  
-- Robot state information (e.g., wrist pose, finger joint positions)  
-- Natural language command specifying the desired behavior  
+- **Monocular RGB image** from the robot’s onboard camera  
+- **Robot state information** (e.g., wrist pose, finger joint positions)  
+- **Natural language command** specifying the desired behavior  
 
 ### **Output:**  
 - Continuous 35-DoF action vector at 200Hz, including:  
-  - Wrist pose targets  
-  - Finger movements  
-  - Head and torso orientation  
+  - **Wrist pose targets** 
+  - **Finger movements**  
+  - **Head and torso orientation**  
 
 ## Model Architecture
 
@@ -367,7 +367,39 @@ def generate_action_chunk(context_embedding, T=50):
     return x  # Final predicted action chunk
 ```
 
-## 6) Key Works and Citations
+## 6) Fine-tuning VLA Models: Considerations and Strategies
+
+Fine-tuning is a critical process for adapting pre-trained **VLA models** to specific tasks and robot setups. While these models are powerful and generalizable out of the box, fine-tuning allows for improved performance in diverse real-world scenarios. This chapter explores general considerations and the different strategies available for fine-tuning VLA models to achieve task-specific optimization.
+
+### 1. **Full Fine-tuning**
+   Full fine-tuning involves updating all model parameters, including the vision encoder, LLM and transformer layers. This approach provides the most flexibility and potential for performance improvement but requires substantial computational resources. It is suitable for situations where the robot setup and task domain are significantly different from the pre-trained data.
+
+   - **Pros**: High performance with full adaptation.
+   - **Cons**: High computational cost and memory usage.
+
+### 2. **Last Layer Only**
+   In this strategy, only the last layer of the model’s transformer backbone are fine-tuned. This method significantly reduces the number of trainable parameters and computation requirements but may limit the model’s ability to adapt to new tasks that demand deeper adjustments across the network.
+
+   - **Pros**: Low computational cost and memory usage.
+   - **Cons**: Likely to yield poorer performance on complex tasks.
+
+### 3. **Sandwich Fine-tuning**
+   Sandwich fine-tuning unfreezes the vision encoder and last layer while keeping the rest of the model frozen. This technique is a compromise between full fine-tuning and parameter-efficient approaches, providing better adaptation to new visual features while saving on GPU memory by not fine-tuning the entire model backbone.
+
+   - **Pros**: Balanced approach with good performance and reduced memory usage.
+   - **Cons**: Still requires significant resources, though less than full fine-tuning.
+
+### 4. **LoRA (Low-Rank Adaptation)**
+   LoRA is a low-rank adaptation technique that modifies only a small fraction of the model parameters while achieving performance close to that of full fine-tuning. By applying LoRA to all linear layers of the model, we can drastically reduce the number of trainable parameters (often to just 1.4% of the full model) and achieve significant computational savings without sacrificing performance.
+
+   - **Pros**: Best performance-compute trade-off, requiring only a fraction of the model parameters to be updated.
+   - **Cons**: May not fully capture all potential domain-specific nuances compared to full fine-tuning.
+
+### Choosing the Right Strategy
+
+The selection of a fine-tuning strategy should depend on the available computational resources, the complexity of the task, and the extent of the domain shift between the pre-trained model and the target environment. For most use cases, **LoRA** presents a highly effective solution, offering an excellent trade-off between computational efficiency and task performance.
+
+## 7) Key Works and Citations
 
 - **T. Zhao, V. Kumar**: [*Learning Fine-Grained Bimanual Manipulation with Low-Cost Hardware*](https://arxiv.org/pdf/2304.13705)
 - **D. Ghosh, H. Walke**: [*Octo: An Open-Source Generalist Robot Policy*](https://arxiv.org/pdf/2405.12213)
@@ -377,3 +409,4 @@ def generate_action_chunk(context_embedding, T=50):
 - **Figure AI**: [*Helix: A Vision-Language-Action Model for Generalist Humanoid Control*](https://www.figure.ai/news/helix)
 - **C. Chi, Z. Xu, S. Feng**: [*Diffusion Policy: Visuomotor Policy Learning via Action Diffusion*](https://arxiv.org/pdf/2303.04137)
 - **K. Pertsch, K. Stachowicz**: [*FAST: Efficient Action Tokenization for Vision-Language-Action Models*](https://arxiv.org/pdf/2501.09747)
+- **G. Berseth**: [*Coding Generalist Robot Policies*](https://www.youtube.com/watch?v=w12h2tKKl_s)
