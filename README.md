@@ -4,11 +4,15 @@
     <img src="./images/foundation_models.png" alt="Global Trajectory">
 </div><br>
 
-Robotics is undergoing a revolution as foundation models (large AI models trained on diverse datasets) are enabling robots to perform complex manipulation tasks with unprecedented generalization. Unlike traditional approaches that require task-specific programming, these models leverage transformers and imitation learning to allow robots to adapt flexibly to new tasks and environments. This shift is driving advances in critical applications, from industrial automation and precision manufacturing to home robot assistants.  
+The world of robotics is evolving rapidly with the advent of **foundation models**: large  AI systems that enable robots to perform complex manipulation tasks with unprecedented flexibility. These models, which leverage techniques like **transformers** and **imitation learning**, allow robots to learn across diverse environments and tasks without task-specific programming. This shift is driving advances in critical applications, from industrial automation to home robot assistants.  
 
-In this blog post, we’ll explore state-of-the-art methods like ACT, Octo, Helix from Figure AI, OpenVLA and Diffusion Policies from Toyota Research Institute. We'll break down each method into its core components: the datasets they use, the inputs and outputs they use and their model architectures.
+In this blog post, we’ll break down key foundation models for robotic manipulation, including:
 
-Whether you're an AI researcher, a roboticist, or simply curious about the future of autonomous robots, this guide will provide a clear and structured overview of how modern foundation models are shaping the next generation of robotic manipulation!
+- **Architectures of Foundation Models**: How modern models like ACT, Octo, OpenVLA and Helix are designed to enable robots to perform generalist tasks.
+- **Action Representation**: Different methods for representing actions, such as continuous space, discretization and diffusion-based generation.
+- **Finetuning Considerations**: Key insights on how to adapt these models for specific tasks and environments to ensure high performance in real-world applications.
+
+Whether you're an AI researcher, roboticist or just curious about the future of autonomous robots, this guide will provide a clear and engaging overview of the exciting innovations shaping the next generation of robotic manipulation.
 
 ## 1) Action Chunk Transformer (ACT)
 
@@ -106,7 +110,7 @@ Octo is trained on a massive dataset of **800,000 robot trajectories** collected
     - **Goal images** (e.g., "Make the scene look like this").  
 
 ### **Output:**  
-- **Delta Cartesian position actions** in chunks.  
+- **Delta position Cartesian actions** in chunks.  
 
 
 ## Model Architecture  
@@ -163,7 +167,7 @@ OpenVLA is trained on a curated subset of 970,000 robot demonstrations from the 
 - **Language instruction:** A natural language command describing the desired task (e.g., "stack the blocks" or "put the apple in the bowl").  
 
 ### **Output:**  
-- **Robot actions as discrete tokens**  
+- **Delta position Cartesian actions as discrete tokens**  
 
 ## Model Architecture
 
@@ -184,8 +188,66 @@ OpenVLA builds on a modular vision-language foundation, with three primary compo
 
 This combination allows OpenVLA to act as a generalist visuomotor controller, understanding high-level language commands and grounding them into low-level action sequences.
 
-## 4) VLAM Helix Figure
+## Innovative Contributions
 
+A key innovation of OpenVLA is its ability to **ground natural language instructions in visual observations** by leveraging a large pretrained language model (LLaMA 2) within a unified vision-language-action architecture. This enables OpenVLA to understand and execute complex task instructions - such as “place the blue mug on the top shelf next to the red bowl” - without requiring handcrafted reward functions or rigid scripting.
+
+## 4) Helix: A Vision-Language-Action Model for Humanoid Control
+
+<div>
+    <img src="./images/figure.PNG" alt="Global Trajectory">
+</div><br>
+
+## Helix
+
+Helix (**Figure AI**) is a Vision-Language-Action (VLA) model capable of controlling the **entire upper body of a humanoid robot** from raw pixels and natural language. It introduces a novel dual-system design - System 1 for fast, reactive control and System 2 for semantic understanding - enabling real-time dexterous manipulation grounded in language.
+
+## Dataset
+
+Helix is trained on a high-quality, diverse dataset consisting of approximately 500 hours of teleoperated demonstrations, collected across multiple robots and human operators. These demonstrations cover a broad spectrum of upper-body behaviors, including precise finger movements, coordinated arm motions and full-body pose adjustments. To generate language-conditioned training pairs at scale, an auto-labeling vision-language model (VLM) is used to create hindsight instructions. This model analyzes segmented video clips from onboard cameras and answers the prompt: “What instruction would you have given the robot to get the action seen in this video?” 
+
+## Input & Output
+
+### **Input:**  
+- Monocular RGB image from the robot’s onboard camera  
+- Robot state information (e.g., wrist pose, finger joint positions)  
+- Natural language command specifying the desired behavior  
+
+### **Output:**  
+- Continuous 35-DoF action vector at 200Hz, including:  
+  - Wrist pose targets  
+  - Finger movements  
+  - Head and torso orientation  
+
+## Model Architecture
+
+Helix consists of two main components that operate at different frequencies: **System 2 (S2)** for high-level perception and planning, and **System 1 (S1)** for low-level  real-time control.
+
+### **System 2 (S2): Vision-Language Model**
+
+S2 is a 7B-parameter vision-language model (VLM), pretrained on large-scale internet data. It processes:
+- Monocular RGB images from the robot’s onboard camera
+- Proprioceptive robot state (e.g., wrist pose, finger joint positions)
+- A natural language command
+
+These inputs are encoded into a shared embedding space and distilled into a single **latent semantic vector**, which summarizes the high-level task intent. This vector is passed to S1 to guide motor control.
+
+### **System 1 (S1): Visuomotor Transformer**
+
+S1 is an 80M-parameter cross-attention encoder-decoder transformer optimized for reactive control at **200 Hz**. It uses:
+- A multi-scale convolutional vision backbone pretrained in simulation
+- The same image and state inputs as S2
+- The latent vector from S2 as task-conditioning input
+
+These inputs are combined and processed to produce continuous control outputs for:
+- End-effector poses (wrist and arm)
+- Finger flexion and abduction
+- Head and torso orientation
+- A scalar representing task progress (used for predicting completion)
+
+## Innovative Contributions
+
+Helix introduces a novel dual-system architecture inspired by "System 1 / System 2" reasoning. **System 2** (S2) handles slow, semantic understanding using a large vision-language model, while **System 1** (S1) performs fast, reactive control at 200 Hz. This separation allows Helix to combine internet-scale language grounding with high-frequency, whole upper-body humanoid control.
 
 ## 5) Action Representation
 
