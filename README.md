@@ -198,8 +198,6 @@ A key innovation of OpenVLA is its ability to **ground natural language instruct
     <img src="./images/figure.PNG" alt="Global Trajectory">
 </div><br>
 
-## Helix
-
 Helix (**Figure AI**) is a Vision-Language-Action (VLA) model capable of controlling the **entire upper body of a humanoid robot** from raw pixels and natural language. It introduces a novel dual-system design - System 1 for fast, reactive control and System 2 for semantic understanding - enabling real-time dexterous manipulation grounded in language.
 
 ## Dataset
